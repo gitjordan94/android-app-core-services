@@ -125,7 +125,7 @@ class MediaSourceParserTest {
 
     @Test
     fun `parse returns unknown media source for unrecognized string`() {
-        val result = parser.parse("snapchat")
+        val result = parser.parse("myspace")
 
         assertEquals(MediaSourceType.UNKNOWN, result.type)
     }

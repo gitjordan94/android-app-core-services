@@ -15,4 +15,5 @@ internal data class LoadSources(
     val advertisingId: Deferred<AdvertisingId?>,
     val purchases: Deferred<Purchases?>,
     val storeCountry: Deferred<String?>,
+    val isAB: Deferred<Boolean?>,
 )

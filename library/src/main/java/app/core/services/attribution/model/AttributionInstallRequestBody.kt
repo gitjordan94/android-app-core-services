@@ -8,6 +8,7 @@ data class AttributionInstallRequestBody(
     @SerialName("sdkVersion") val sdkVersion: String?,
     @SerialName("osVersion") val osVersion: String?,
     @SerialName("appVersion") val appVersion: String?,
+    @SerialName("appVersionCode") val appVersionCode: Long?,
     @SerialName("limitAdTracking") val limitAdTracking: Boolean?,
     @SerialName("advertisingId") val advertisingId: String?,
     @SerialName("appsflyerId") val appsflyerId: String?,
@@ -17,6 +18,8 @@ data class AttributionInstallRequestBody(
     @SerialName("externalAuthorization") val externalAuthorization: Boolean?,
     @SerialName("installParams") val installParams: InstallParams?,
     @SerialName("firebaseAppInstanceId") val firebaseAppInstanceId: String?,
+    // Default null, so that with encodeDefaults = false an install without an answer has no "consent" key.
+    @SerialName("consent") val consent: AttributionConsent? = null,
 )
 
 @Serializable

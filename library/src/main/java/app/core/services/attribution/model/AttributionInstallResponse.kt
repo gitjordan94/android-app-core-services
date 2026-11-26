@@ -7,4 +7,5 @@ import kotlinx.serialization.Serializable
 internal data class AttributionInstallResponse(
     @SerialName("userId") val userId: String,
     @SerialName("userIp") val userIp: String?,
+    @SerialName("isAB") val isAB: Boolean?,
 )

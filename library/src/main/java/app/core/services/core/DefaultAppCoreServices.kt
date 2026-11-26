@@ -106,9 +106,10 @@ internal class DefaultAppCoreServices(
 
     override fun setConsent(consent: Consent) {
         Timber.i(
-            "[consent] set: analyticsStorage=%b, adStorage=%b",
+            "[consent] set: analyticsStorage=%b, adStorage=%b, isUserSubjectToGDPR=%s",
             consent.analyticsStorage,
             consent.adStorage,
+            consent.isUserSubjectToGDPR,
         )
 
         consentFlow.value = consent
@@ -116,6 +117,7 @@ internal class DefaultAppCoreServices(
         appsFlyerAnalytics.setConsent(consent)
         amplitudeAnalytics.setConsent(consent)
         firebaseAnalytics.setConsent(consent)
+        attributionServerClient?.setConsent(consent)
     }
 
     override fun onLauncherActivityCreated(activity: Activity) {
@@ -295,6 +297,9 @@ internal class DefaultAppCoreServices(
                     )
                 }
 
+                attachDeviceId()
+                val isAbDeferred = sendApplicationInstall()
+
                 val sources = LoadSources(
                     isFirstLaunch = isFirstLaunchDeferred,
                     attribution = attribution,
@@ -305,10 +310,8 @@ internal class DefaultAppCoreServices(
                     advertisingId = advertisingIdDeferred,
                     purchases = purchasesDeferred,
                     storeCountry = storeCountryDeferred,
+                    isAB = isAbDeferred,
                 )
-
-                attachDeviceId()
-                sendApplicationInstall()
 
                 val jobs = launch(sources, deadline)
                 Timber.d("[load] launched %d post-source jobs, awaiting...", jobs.size)
@@ -349,20 +352,19 @@ internal class DefaultAppCoreServices(
         }
     }
 
-    private fun sendApplicationInstall() {
-        internalScope.launch("application_install") {
+    private fun sendApplicationInstall(): Deferred<Boolean?> {
+        return async("application_install") {
             val uuid = appsFlyerAnalytics.appsFlyerUID
             if (uuid == null) {
                 Timber.w("[application_install] skipped: appsflyer uid is null")
-                return@launch
+                return@async null
             }
             if (attributionServerClient == null) {
                 Timber.d("[application_install] skipped: attribution server client is not configured")
-                return@launch
+                return@async null
             }
             Timber.d("[application_install] sending install for uid=%s", uuid)
-            attributionServerClient.install(uuid)
-            Timber.d("[application_install] install sent")
+            attributionServerClient.install(uuid).await()
         }
     }
 
@@ -391,6 +393,9 @@ internal class DefaultAppCoreServices(
         },
         launch("feature_flags") {
             sources.featureFlags.awaitUntil(deadline)
+        },
+        launch("is_ab") {
+            sources.isAB.awaitUntil(deadline)
         }
     )
 
@@ -438,13 +443,16 @@ internal class DefaultAppCoreServices(
         val purchases = sources.purchases.getCompletedOrNull()
         val storeCountry = sources.storeCountry.getCompletedOrNull()
         val isFirstLaunch = sources.isFirstLaunch.getCompletedOrNull() ?: false
+        // null: no answer within the timeout, or the install failed or was skipped.
+        val isAB = sources.isAB.getCompletedOrNull()
 
         Timber.i(
-            "[build_result] mediaSource=%s | storeCountry=%s | purchases=%b | firstLaunch=%b",
+            "[build_result] mediaSource=%s | storeCountry=%s | purchases=%b | firstLaunch=%b | isAB=%s",
             attribution.mediaSource.value.ifEmpty { "organic" },
             storeCountry ?: "timeout",
             purchases != null,
             isFirstLaunch,
+            isAB,
         )
 
         return BootstrapResult(
@@ -452,6 +460,7 @@ internal class DefaultAppCoreServices(
             purchases = purchases,
             storeCountry = storeCountry,
             isFirstLaunch = isFirstLaunch,
+            isAB = isAB,
         )
     }
 
@@ -478,7 +487,6 @@ internal class DefaultAppCoreServices(
         Timber.d("[first_launch] flushed, cohort sent, flag persisted")
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     private fun observeUserId(appsFlyerUid: String?): Job {
         return consentFlow
             .map { it == null || it.analyticsStorage }

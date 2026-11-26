@@ -3,6 +3,7 @@ package app.core.services.attribution
 import app.core.services.BuildConfig
 import app.core.services.attribution.model.AttributionInstallRequestBody
 import app.core.services.attribution.model.AttributionInstallResponse
+import app.core.services.attribution.model.ConsentRequestBody
 import app.core.services.attribution.model.ExternalAuthorizationRequestBody
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -17,6 +18,7 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +30,12 @@ internal interface AttributionServerApi {
     suspend fun install(request: AttributionInstallRequestBody): Result<AttributionInstallResponse>
 
     suspend fun externalAuthorization(request: ExternalAuthorizationRequestBody): Result<Unit>
+
+    /**
+     * `POST /attribute/consent`. A non-2xx answer fails with [AttributionServerHttpException];
+     * 5xx answers are retried by the client first.
+     */
+    suspend fun consent(request: ConsentRequestBody): Result<Unit>
 
     companion object {
         fun create(token: String, serverUrl: String): AttributionServerApi {
@@ -110,6 +118,21 @@ internal class AttributionServerApiImpl(
                 }
 
                 Unit
+            }
+        }
+    }
+
+    override suspend fun consent(request: ConsentRequestBody): Result<Unit> {
+        return runCatching {
+            withContext(ioDispatcher) {
+                val response = httpClient.post("/attribute/consent") {
+                    contentType(ContentType.Application.Json)
+                    setBody(request)
+                }
+
+                if (!response.status.isSuccess()) {
+                    throw AttributionServerHttpException(response.status.value)
+                }
             }
         }
     }

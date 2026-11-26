@@ -2,7 +2,7 @@
 
 An Android library that unifies analytics, remote config, billing, and attribution into a single SDK.
 
-**SDK version:** `1.5.4`  
+**SDK version:** `1.6.1`  
 **Min SDK:** 23 · **Compile SDK:** 37 · **JVM target:** 17
 
 ---
@@ -326,6 +326,7 @@ val consent = Consent(
     adPersonalization = true,
     adStorage         = true,
     adUserData        = true,
+    isUserSubjectToGDPR = true, // null (default) = unknown
 )
 
 // Call before start() to ensure consent is respected from the very first SDK event
@@ -333,6 +334,10 @@ AppCoreServices.sharedInstance.setConsent(consent)
 ```
 
 Consent is applied to AppsFlyer, Amplitude, and Firebase Analytics simultaneously. Calling `setConsent` after `start()` still applies immediately, but some early events may already have been sent.
+
+`isUserSubjectToGDPR` goes to AppsFlyer as is (with `null` AppsFlyer relies on TCF data).
+
+Consent also goes to the attribution server: inside the install request when it is set before the install is sent (no answer yet — no `consent` in the request), and through `POST /attribute/consent` for every later value the server has not seen — an answer given after the install, the first answer after an update from an SDK without consent, a change in settings. Failed requests are retried on the next launch and foreground; repeating the same value sends nothing. Call `setConsent` only with the user's answer, never with a placeholder while it is pending.
 
 ---
 

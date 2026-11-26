@@ -55,7 +55,13 @@ interface AppCoreServices {
     val deepLinkManager: DeepLinkManager
 
     /**
-     * Applies user consent to all integrated SDKs (AppsFlyer, Amplitude, Firebase).
+     * Applies user consent to all integrated SDKs (AppsFlyer, Amplitude, Firebase) and sends it to
+     * the attribution server: in the install request when it is known by then, otherwise (and on
+     * every later change) through `POST /attribute/consent`. Repeating the same value sends nothing.
+     *
+     * Call it only with the user's answer, or with a value that stands for one (e.g. everything
+     * granted where no consent is required) — not with a placeholder while the answer is pending:
+     * the attribution server would take the placeholder as the answer.
      *
      * Call this **before** [start] whenever possible so that the consent state is respected
      * from the very first SDK interaction. If called after [start], consent is still applied

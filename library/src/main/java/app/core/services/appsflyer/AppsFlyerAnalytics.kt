@@ -67,7 +67,7 @@ internal class AppsFlyerAnalytics(
 
         appsFlyer.setConsentData(
             AppsFlyerConsent(
-                isUserSubjectToGDPR = null,
+                isUserSubjectToGDPR = consent.isUserSubjectToGDPR,
                 hasConsentForDataUsage = consent.adUserData,
                 hasConsentForAdsPersonalization = consent.adPersonalization,
                 hasConsentForAdStorage = consent.adStorage
