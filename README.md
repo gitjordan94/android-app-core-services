@@ -45,6 +45,51 @@ The internal implementation (`DefaultAppCoreServices`) is hidden; only the inter
 
 ## Quick Start
 
+### 0. Add the SDK and its Gradle plugin
+
+The SDK is published as `io.github.gitjordan94:core-services`; its Gradle plugin `io.github.gitjordan94.core-services` as
+`io.github.gitjordan94:core-services-gradle-plugin`. Both share one version (`VERSION_NAME` in `gradle.properties`).
+The app's build files are the same whether the SDK comes from Maven or from source:
+
+```kotlin
+// gradle/libs.versions.toml
+[versions]
+coreServices = "1.6.1"
+[libraries]
+core-services = { module = "io.github.gitjordan94:core-services", version.ref = "coreServices" }
+[plugins]
+core-services = { id = "io.github.gitjordan94.core-services", version.ref = "coreServices" }
+
+// app/build.gradle.kts
+plugins {
+    id("com.android.application")
+    alias(libs.plugins.core.services)
+}
+dependencies {
+    implementation(libs.core.services)
+}
+```
+
+Only `settings.gradle.kts` differs:
+
+```kotlin
+// From Maven: add the repository the SDK is published to, for plugins and for dependencies.
+pluginManagement { repositories { maven("<repository>") } }
+dependencyResolutionManagement { repositories { maven("<repository>") } }
+
+// From source (git submodule): Gradle substitutes io.github.gitjordan94:core-services with this build's module,
+// the version in the catalog is then ignored.
+pluginManagement { includeBuild("android-app-core-services/build-logic") }
+includeBuild("android-app-core-services")
+```
+
+From source, the SDK build must use **the same AGP version as the app** (`agp` in
+`gradle/libs.versions.toml` here): Android does not allow two AGP versions in one build.
+
+`io.github.gitjordan94.core-services` must be applied to the application module (it fails the build in a library module). It
+applies the Amplitude Session Replay Gradle plugin (Compose capture) and aligns every Session Replay
+artifact to the version the SDK was built with.
+
 ### 1. Configure and initialize the SDK
 
 ```kotlin
@@ -253,12 +298,12 @@ ageSignalsManager.requestAgeSignals(object : AgeSignalsListener {
 
 ### Session Replay
 
-Configured via `SessionReplayConfig` inside `AppCoreServices.Configuration`:
+Amplitude Session Replay 1.2.0. Configured via `SessionReplayConfig` inside `AppCoreServices.Configuration`:
 
 ```kotlin
 SessionReplayConfig(
     autoStart = false,
-    sampleRate = 0.05,                               // 5% of sessions
+    sampleRate = 0.05,                               // Double: 5% of sessions
     maskLevel = SessionReplayConfig.MaskLevel.MEDIUM, // LIGHT / MEDIUM / CONSERVATIVE
     enableRemoteConfig = true,                        // allow Amplitude Remote Config to override settings
 )
@@ -267,12 +312,29 @@ SessionReplayConfig(
 SessionReplayConfig.testingConfig()
 ```
 
+Recording starts only while analytics consent is granted: withdrawing it (`setConsent`) disables Session
+Replay. With `autoStart = true` it is enabled again as soon as consent is granted.
+
 Runtime control via `analytics` (implements `SessionReplayController`):
 
 ```kotlin
-analytics.startSessionReplay()
-analytics.stopSessionReplay()
+analytics.enableSessionReplay()
+analytics.disableSessionReplay()
 ```
+
+Masking in Compose (`app.core.services.amplitude.sessionreplay.compose`):
+
+| Modifier | Effect |
+|---|---|
+| `Modifier.sessionReplayMask()` | Masks text and inputs of the subtree |
+| `Modifier.sessionReplayUnmask()` | Shows the subtree unmasked |
+| `Modifier.sessionReplayBlock()` | Records the subtree as an opaque block; cannot be unmasked below |
+
+Requirements in the app:
+
+- the `io.github.gitjordan94.core-services` Gradle plugin (see [Quick Start](#0-add-the-sdk-and-its-gradle-plugin)) — without it
+  Compose screens are not captured;
+- Compose UI 1.9 or newer (the version Amplitude supports), AGP 8.5+, JDK 17+ to run Gradle.
 
 ---
 
@@ -366,14 +428,71 @@ fakeConfig["my_flag"] = FakeRemoteConfigValue("treatment")
 
 ---
 
+## Building and publishing
+
+The repository is a standalone Gradle build (its own wrapper, `gradle/libs.versions.toml` as `libs`).
+Coordinates, version and POM metadata are in `gradle.properties` (`GROUP`, `VERSION_NAME`, `POM_*`).
+
+```bash
+./gradlew :core-services:testDebugUnitTest
+./gradlew :core-services:publishToMavenLocal          # io.github.gitjordan94:core-services
+./gradlew -p build-logic publishToMavenLocal          # io.github.gitjordan94:core-services-gradle-plugin + plugin marker
+```
+
+Inside a consumer that includes it from source, address its tasks through the build name, e.g.
+`./gradlew :android-app-core-services:core-services:testDebugUnitTest`.
+
+### Maven Central
+
+Published with [`com.vanniktech.maven.publish`](https://vanniktech.github.io/gradle-maven-publish-plugin/) to
+the Central Portal under the namespace `io.github.gitjordan94`.
+
+One-time setup (per machine or CI), in `~/.gradle/gradle.properties` — never in the repository:
+
+```properties
+mavenCentralUsername=<Central Portal user token: username>
+mavenCentralPassword=<Central Portal user token: password>
+signingInMemoryKey=<ASCII-armored private GPG key, one line>
+signingInMemoryKeyPassword=<key password>
+```
+
+- User token: central.sonatype.com → Account → Generate User Token.
+- GPG key: `gpg --full-generate-key`, publish the public key with
+  `gpg --keyserver keyserver.ubuntu.com --send-keys <KEYID>`, export the private one with
+  `gpg --export-secret-keys --armor <KEYID>`.
+
+Without `signingInMemoryKey` artifacts are not signed: fine for `publishToMavenLocal`, rejected by Maven Central.
+
+Release from CI (`.github/workflows/release.yaml`, secrets in the GitHub environment `release`:
+`CENTRAL_PORTAL_USERNAME`, `CENTRAL_PORTAL_PASSWORD`, `ARTIFACT_SIGNING_PRIVATE_KEY`,
+`ARTIFACT_SIGNING_PRIVATE_KEY_PASSWORD`):
+
+1. Bump `VERSION_NAME` in `gradle.properties` and merge (a version on Maven Central can never be replaced or deleted).
+2. `git tag v<VERSION_NAME> && git push origin v<VERSION_NAME>` — the workflow checks that the tag matches
+   `VERSION_NAME`, runs the unit tests and uploads both artifacts.
+3. central.sonatype.com → Deployments: check validation, press **Publish**.
+
+Release from a machine (secrets in `~/.gradle/gradle.properties`, see above):
+
+1. Bump `VERSION_NAME` in `gradle.properties`.
+2. Upload both artifacts:
+   ```bash
+   ./gradlew :core-services:publishToMavenCentral
+   ./gradlew -p build-logic publishToMavenCentral
+   ```
+3. central.sonatype.com → Deployments: check validation, press **Publish**. Artifacts reach Maven Central
+   in about 10–30 minutes.
+
+---
+
 ## Dependencies
 
 | Library | Version | Purpose |
 |---|---|---|
 | AppsFlyer Android SDK | 6.18.0 | Attribution, deep links, analytics |
-| Amplitude Analytics Android | 1.28.2 | Event analytics |
+| Amplitude Analytics Android | 1.37.2 | Event analytics |
 | Amplitude Experiment Android | 1.16.1 | Remote Config / A-B testing |
-| Amplitude Session Replay | 0.26.1 | Session recording |
+| Amplitude Session Replay | 1.2.0 | Session recording (+ Gradle plugin via `io.github.gitjordan94.core-services`) |
 | Firebase BOM | 34.14.0 | Firebase Analytics |
 | Google Play Billing | 7.1.1 | In-app purchases and subscriptions |
 | Google Play Age Signals | 0.0.3 | Age verification via Google Play |

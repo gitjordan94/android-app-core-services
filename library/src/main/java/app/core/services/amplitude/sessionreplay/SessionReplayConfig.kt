@@ -6,6 +6,9 @@ package app.core.services.amplitude.sessionreplay
  * This is used when creating a [com.amplitude.android.plugins.SessionReplayPlugin] and allows you to
  * define sampling, default enablement, and privacy settings in one place.
  *
+ * Compose screens are recorded only when the app module applies the `app.core.services` Gradle plugin
+ * (see README, Session Replay).
+ *
  * @property autoStart
  *  Whether Session Replay should be enabled immediately after initialization.
  *
@@ -30,7 +33,7 @@ package app.core.services.amplitude.sessionreplay
  */
 data class SessionReplayConfig(
     val autoStart: Boolean = false,
-    val sampleRate: Number = 0.01,
+    val sampleRate: Double = 0.01,
     val maskLevel: MaskLevel = MaskLevel.MEDIUM,
     val enableRemoteConfig: Boolean = true,
 ) {

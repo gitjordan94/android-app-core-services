@@ -1,0 +1,72 @@
+# Publishes io.github.gitjordan94:core-services and io.github.gitjordan94:core-services-gradle-plugin
+# to Maven Central when a tag `v<VERSION_NAME>` is pushed (VERSION_NAME from gradle.properties):
+#
+#   git tag v1.6.1 && git push origin v1.6.1
+#
+# The upload lands in central.sonatype.com → Deployments; press "Publish" there to release it.
+#
+# Secrets (Settings → Environments → release → Environment secrets):
+#   CENTRAL_PORTAL_USERNAME, CENTRAL_PORTAL_PASSWORD   Central Portal user token
+#   ARTIFACT_SIGNING_PRIVATE_KEY                       GPG private key, one line (see README, Maven Central)
+#   ARTIFACT_SIGNING_PRIVATE_KEY_PASSWORD              its password
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    environment:
+      name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+      ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+      ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.ARTIFACT_SIGNING_PRIVATE_KEY }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.ARTIFACT_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check tag, version and secrets
+        run: |
+          version=$(sed -n 's/^VERSION_NAME=//p' gradle.properties)
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match VERSION_NAME=${version} in gradle.properties"
+            exit 1
+          fi
+          # Without the key the build signs nothing and Maven Central rejects the upload: fail here instead.
+          for name in ORG_GRADLE_PROJECT_mavenCentralUsername ORG_GRADLE_PROJECT_mavenCentralPassword \
+                      ORG_GRADLE_PROJECT_signingInMemoryKey ORG_GRADLE_PROJECT_signingInMemoryKeyPassword; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret for ${name#ORG_GRADLE_PROJECT_} is not set in the 'release' environment"
+              exit 1
+            fi
+          done
+
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: Unit tests
+        run: ./gradlew :core-services:testDebugUnitTest
+
+      - name: Publish SDK
+        run: ./gradlew :core-services:publishToMavenCentral --no-configuration-cache
+
+      - name: Publish Gradle plugin
+        run: ./gradlew -p build-logic publishToMavenCentral --no-configuration-cache

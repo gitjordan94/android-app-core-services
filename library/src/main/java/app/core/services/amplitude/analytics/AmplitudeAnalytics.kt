@@ -10,6 +10,7 @@ import app.core.services.analytics.AnalyticsProperties
 import app.core.services.consent.Consent
 import com.amplitude.android.Amplitude
 import com.amplitude.android.plugins.SessionReplayPlugin
+import com.amplitude.android.sessionreplay.SessionReplay
 import com.amplitude.android.sessionreplay.config.MaskLevel
 import com.amplitude.android.sessionreplay.config.PrivacyConfig
 import com.amplitude.common.Logger
@@ -28,21 +29,28 @@ internal class AmplitudeAnalytics(
         optOut = amplitudeConfig.optOut
     }
 
-    private val sessionReplayPlugin by lazy {
-        SessionReplayPlugin(
-            sampleRate = sessionReplayConfig.sampleRate,
-            enableRemoteConfig = sessionReplayConfig.enableRemoteConfig,
-            privacyConfig = PrivacyConfig(
+    private val appContext = context.applicationContext
+
+    /**
+     * Non-null while Session Replay is enabled. A new plugin is created on every enable: `remove()` tears
+     * the plugin down, and a torn-down instance is not meant to be added again.
+     */
+    private var sessionReplayPlugin: SessionReplayPlugin? = null
+
+    private fun createSessionReplayPlugin() = SessionReplayPlugin(
+        context = appContext,
+        configuration = SessionReplay.Configuration {
+            sampleRate = sessionReplayConfig.sampleRate
+            enableRemoteConfig = sessionReplayConfig.enableRemoteConfig
+            privacyConfig = PrivacyConfig {
                 maskLevel = when (sessionReplayConfig.maskLevel) {
                     SessionReplayConfig.MaskLevel.LIGHT -> MaskLevel.LIGHT
                     SessionReplayConfig.MaskLevel.MEDIUM -> MaskLevel.MEDIUM
                     SessionReplayConfig.MaskLevel.CONSERVATIVE -> MaskLevel.CONSERVATIVE
                 }
-            )
-        )
-    }
-
-    private var isSessionReplayEnabled = false
+            }
+        },
+    )
 
     init {
         amplitude.logger.logMode = if (BuildConfig.DEBUG) {
@@ -148,20 +156,21 @@ internal class AmplitudeAnalytics(
 
     override fun enableSessionReplay() {
         synchronized(this) {
-            if (!isSessionReplayEnabled) {
+            if (sessionReplayPlugin == null) {
                 Timber.d("Enable session replay.")
-                amplitude.add(sessionReplayPlugin)
-                isSessionReplayEnabled = true
+                val plugin = createSessionReplayPlugin()
+                amplitude.add(plugin)
+                sessionReplayPlugin = plugin
             }
         }
     }
 
     override fun disableSessionReplay() {
         synchronized(this) {
-            if (isSessionReplayEnabled) {
+            sessionReplayPlugin?.let { plugin ->
                 Timber.d("Disable session replay.")
-                amplitude.remove(sessionReplayPlugin)
-                isSessionReplayEnabled = false
+                amplitude.remove(plugin)
+                sessionReplayPlugin = null
             }
         }
     }

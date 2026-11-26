@@ -1,5 +1,3 @@
-include(":library")
-
 pluginManagement {
     repositories {
         google()
@@ -16,3 +14,10 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
+
+rootProject.name = "android-app-core-services"
+
+// Published as GROUP:core-services (gradle.properties). The project is named after the artifact so that a
+// consumer including this build from source gets `GROUP:core-services` substituted with it automatically.
+include(":core-services")
+project(":core-services").projectDir = file("library")

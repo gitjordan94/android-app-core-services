@@ -1,13 +1,17 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    id("com.android.library")
-    id("com.google.devtools.ksp")
-    id("org.jetbrains.kotlin.plugin.serialization")
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.vanniktech.maven.publish)
 }
 
-val afVersion = "7.0.1"
-val ageSignalsVersion = "0.0.3"
+group = providers.gradleProperty("GROUP").get()
+version = providers.gradleProperty("VERSION_NAME").get()
+
+val afVersion: String = libs.versions.appsflyer.get()
+val ageSignalsVersion: String = libs.versions.ageSignals.get()
 
 android {
     namespace = "app.core.services"
@@ -25,7 +29,7 @@ android {
         buildConfigField(
             "String",
             "SDK_VERSION",
-            "\"1.6.1\""
+            "\"$version\""
         )
 
         buildConfigField(
@@ -57,71 +61,80 @@ android {
     }
 }
 
-//noinspection UseTomlInstead
 dependencies {
     // Core
-    api("androidx.fragment:fragment-ktx:1.8.9")
-    implementation("com.google.android.play:app-update-ktx:2.1.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    api(libs.androidx.fragment.ktx)
+    implementation(libs.play.app.update.ktx)
+    implementation(libs.kotlinx.coroutines.core)
 
     // Compose
-    implementation("androidx.compose.ui:ui:1.11.2")
+    implementation(libs.androidx.compose.ui)
 
     // Lifecycle
-    val lifecycleVersion = "2.10.0"
-    implementation("androidx.lifecycle:lifecycle-common:$lifecycleVersion")
-    implementation("androidx.lifecycle:lifecycle-process:$lifecycleVersion")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
+    implementation(libs.androidx.lifecycle.common)
+    implementation(libs.androidx.lifecycle.process)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
 
     // Billing
-    implementation("com.android.billingclient:billing-ktx:9.1.0")
+    implementation(libs.billing.ktx)
 
     // DataStore
-    implementation("androidx.datastore:datastore-preferences:1.2.1")
+    implementation(libs.androidx.datastore.preferences)
 
     // Google Play Services
-    implementation("com.google.android.gms:play-services-ads-identifier:18.3.0")
-    implementation("com.google.android.gms:play-services-appset:16.1.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
+    implementation(libs.play.services.ads.identifier)
+    implementation(libs.play.services.appset)
+    implementation(libs.kotlinx.coroutines.play.services)
 
-    implementation("com.google.android.play:age-signals:$ageSignalsVersion")
+    implementation(libs.play.age.signals)
 
     // Analytics
-    implementation("com.amplitude:analytics-android:1.30.0")
-    implementation("com.amplitude:experiment-android-client:1.16.1")
-    implementation("com.amplitude:plugin-session-replay-android:0.27.0")
-    api("com.appsflyer:af-android-sdk:$afVersion")
+    // Session Replay 1.2.0 depends on analytics-core 1.37.1; keep analytics-android on the same line.
+    implementation(libs.amplitude.analytics.android)
+    implementation(libs.amplitude.experiment.android)
+    // Compose capture also needs the Amplitude Gradle plugin in the app module: `app.core.services`.
+    implementation(libs.amplitude.session.replay.plugin)
+    api(libs.appsflyer.android.sdk)
 
     // Database
-    val roomVersion = "2.8.4"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    ksp("androidx.room:room-compiler:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.room.ktx)
 
     // Firebase
-    api(platform("com.google.firebase:firebase-bom:34.16.0"))
-    implementation("com.google.firebase:firebase-config")
-    implementation("com.google.firebase:firebase-analytics")
+    api(platform(libs.firebase.bom))
+    implementation(libs.firebase.config)
+    implementation(libs.firebase.analytics)
 
     // ATT
-    implementation("com.android.installreferrer:installreferrer:2.2")
+    implementation(libs.install.referrer)
 
     // Logging
-    implementation("com.jakewharton.timber:timber:5.0.1")
-    implementation("com.google.firebase:firebase-crashlytics-buildtools:3.0.7")
+    implementation(libs.timber)
+    implementation(libs.firebase.crashlytics.buildtools)
 
     // Network
-    val ktorVersion = "3.5.1"
-    implementation("io.ktor:ktor-client-core:$ktorVersion")
-    implementation("io.ktor:ktor-client-android:$ktorVersion")
-    implementation("io.ktor:ktor-client-okhttp:$ktorVersion")
-    implementation("io.ktor:ktor-client-logging:$ktorVersion")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
-    implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.android)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.logging)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.content.negotiation)
 
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:5.4.0")
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.okhttp.logging.interceptor)
 
     // Testing
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit)
+}
+
+// Maven Central: GROUP, VERSION_NAME and POM_* come from gradle.properties (see README, Publishing).
+mavenPublishing {
+    coordinates(artifactId = "core-services")
+    publishToMavenCentral()
+    // Maven Central requires signed artifacts; the key lives in ~/.gradle/gradle.properties
+    // (signingInMemoryKey, signingInMemoryKeyPassword). Without it, local publishing still works unsigned.
+    if (providers.gradleProperty("signingInMemoryKey").isPresent) {
+        signAllPublications()
+    }
 }
